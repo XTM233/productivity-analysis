@@ -18,4 +18,5 @@ if __name__ == '__main__':
     password = os.environ[ENV_PASSWORD]
 
     api = TogglApi(email, password)
-    api.get_project_data('5684519')
+    # api.get_project_data('5684519')
+    # api.get_my_data()
