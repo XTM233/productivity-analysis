@@ -17,11 +17,11 @@ from api import TogglApi
 
 
 # Names of expected environment variables
-ENV_EMAIL = 'TOGGL_EMAIL'
-ENV_PASSWORD = 'TOGGL_PASSWORD'
+ENV_EMAIL = "TOGGL_EMAIL"
+ENV_PASSWORD = "TOGGL_PASSWORD"
 
 
-if __name__ == '__main__':
+if __name__ == "__main__":
     """You need to set TOGGL_EMAIL and TOGGL_PASSWORD as environment variables"""
     if ENV_EMAIL not in os.environ:
         raise ValueError(f'"{ENV_EMAIL}" environment variable must be set')
@@ -32,11 +32,15 @@ if __name__ == '__main__':
     password = os.environ[ENV_PASSWORD]
 
     api = TogglApi(email, password)
-    WORKSPACE_ID = '5684519'
+    WORKSPACE_ID = "5684519"
     projects = api.get_project_data(WORKSPACE_ID)
     print(projects)
 
     fig, ax = plt.subplots()
-    fig.suptitle('Time Spent')
-    ax.pie([p.actual_hours for p in projects], labels=[p.name for p in projects], autopct='%1.1f%%')
+    fig.suptitle("Time Spent")
+    ax.pie(
+        [p.actual_hours for p in projects],
+        labels=[p.name for p in projects],
+        autopct="%1.1f%%",
+    )
     plt.show()
