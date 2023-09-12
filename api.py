@@ -46,6 +46,7 @@ class TogglApi:
         self.password = password
         # self._me = self.get_my_data()
 
+    # TODO: rename `me`
     def get_my_data(self) -> Dict:
         """
         Retrieve data about 'me'
