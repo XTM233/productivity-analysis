@@ -58,6 +58,8 @@ class TogglApi:
                 "Authorization": self._make_auth_string(),
             },
         )
+        if res.status_code != 200:
+            raise ValueError(f"Request failed: {res}.")
         return res.json()
 
     def get_time_entries(self, start_date: date, end_date: date) -> List[TimeEntry]:
@@ -76,6 +78,8 @@ class TogglApi:
                 "Authorization": self._make_auth_string(),
             },
         )
+        if res.status_code != 200:
+            raise ValueError(f"Request failed: {res}.")
         return [
             TimeEntry(
                 raw["id"],
@@ -101,6 +105,8 @@ class TogglApi:
                 "Authorization": self._make_auth_string(),
             },
         )
+        if res.status_code != 200:
+            raise ValueError(f"Request failed: {res}.")
         return [
             Project(
                 raw["id"],
