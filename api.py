@@ -15,7 +15,7 @@ import requests
 import dataclasses as dc
 from base64 import b64encode
 from typing import Dict, List
-from datetime import datetime
+from datetime import date, datetime
 
 
 @dc.dataclass
@@ -44,7 +44,6 @@ class TogglApi:
     def __init__(self, email: str, password: str):
         self.email = email
         self.password = password
-        # self._me = self.get_my_data()
 
     # TODO: rename `me`
     def get_my_data(self) -> Dict:
@@ -59,24 +58,36 @@ class TogglApi:
                 "Authorization": self._make_auth_string(),
             },
         )
-        print(res.json())
         return res.json()
 
-    # TODO
-    # def get_time_entries(self) -> List[TimeEntry]:
-    #     """
-    #     Retrieve data from the TimeEntry API.
-    #     See: https://developers.track.toggl.com/docs/api/time_entries/index.html
-    #     """
-    #     res = requests.get(
-    #         'https://api.track.toggl.com/api/v9/me/time_entries',
-    #         headers={
-    #             'content-type': 'application/json',
-    #             'Authorization': self._make_auth_string(),
-    #         },
-    #     )
-    #     print(res.json())
-    #     return res.json()
+    def get_time_entries(self, start_date: date, end_date: date) -> List[TimeEntry]:
+        """
+        Retrieve time entries from start_date until end_date, inclusive.
+        See: https://developers.track.toggl.com/docs/api/time_entries/index.html
+        """
+        res = requests.get(
+            "https://api.track.toggl.com/api/v9/me/time_entries",
+            params={
+                "start_date": start_date.isoformat(),
+                "end_date": end_date.isoformat(),
+            },
+            headers={
+                "content-type": "application/json",
+                "Authorization": self._make_auth_string(),
+            },
+        )
+        return [
+            TimeEntry(
+                raw["id"],
+                raw["workspace_id"],
+                raw["project_id"],
+                datetime.fromisoformat(raw["start"]),
+                datetime.fromisoformat(raw["stop"]),
+                int(raw["duration"]),
+                raw["description"],
+            )
+            for raw in res.json()
+        ]
 
     def get_project_data(self, workspace_id: str) -> List[Project]:
         """
@@ -90,7 +101,6 @@ class TogglApi:
                 "Authorization": self._make_auth_string(),
             },
         )
-        print(res.json())
         return [
             Project(
                 raw["id"],
