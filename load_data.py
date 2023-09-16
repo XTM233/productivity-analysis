@@ -20,24 +20,27 @@ from typing import List
 
 
 def write_to_csv(projects: List[Project], time_entries: List[TimeEntry], out: Path):
+    """
+    Given a list of projects and time entries corresponding to those projects,
+    writes the data in CSV format to `out`. Will join the project names with the
+    time entries via `time_entry.project_id`.
+    """
     # Map project ID to name.
     name_from_project_id = {p.id: p.name for p in projects}
-    with open(out, "w", newline="") as f:
+    with open(out, "w+", newline="") as f:
         writer = csv.writer(f, delimiter=",")
-        writer.writerow(["Project Name", "Start Time", "End Time", "Duration (sec)"])
+        writer.writerow(["Project Name", "Start Time", "End Time", "Description"])
         for t in time_entries:
-            t.start.isoformat()
             writer.writerow(
                 [
                     name_from_project_id[t.project_id],
                     t.start.isoformat(),
                     t.stop.isoformat(),
-                    t.duration,
+                    t.description,
                 ]
             )
 
 
-# TODO: document
 @click.command()
 @click.option("--email", required=True)
 @click.password_option(required=True)
@@ -46,6 +49,7 @@ def write_to_csv(projects: List[Project], time_entries: List[TimeEntry], out: Pa
 @click.option(
     "--out",
     type=click.Path(file_okay=True, dir_okay=False, writable=True, path_type=Path),
+    required=True,
 )
 def load_data(
     email: str,
@@ -54,14 +58,42 @@ def load_data(
     end_date: datetime,
     out: Path,
 ):
+    """
+    Loads project and time entry data from the Toggl API and writes it to a CSV file.
+
+    EMAIL: email address of the Toggl account.
+    PASSWORD: password for the Toggl account.
+    START_DATE: start date for which to load time entries, inclusive, in YYYY-MM-DD format.
+    END_DATE: end date for which to load time entries, exclusive, in YYYY-MM-DD format.
+    OUT: path to the CSV file to write data to. Will create the file if it doesn't exist, or overwrite an existing file.
+    """
     api = TogglApi(email, password)
     click.echo(f"Fetching data from `me` endpoint...")
-    my_data = api.get_my_data()
+    my_data = api.me()
     workspace_id = my_data["default_workspace_id"]
     click.echo(f"Got default workspace {workspace_id}.")
-    projects = api.get_project_data(workspace_id)
+
+    projects = api.project_data(workspace_id)
     click.echo(f"Got data for {len(projects)} projects.")
-    time_entries = api.get_time_entries(start_date.date(), end_date.date())
+
+    # Load all time entries via the `detailed_reports` API.
+    # Note: it seems that Toggl limits the results to 100 entries, at least for my free account.
+    time_entries: List[TimeEntry] = []
+    next_row = 0
+    while True:
+        click.echo(f"Calling DetailedReports API with next_row={next_row}.")
+        next_res = api.detailed_reports(
+            workspace_id, start_date.date(), end_date.date(), next_row=next_row
+        )
+        time_entries += next_res.time_entries
+        # We will need another call if the response has a `next_row_number` and that
+        # number is bigger than the one we just requested.
+        if next_res.x_next_row_number and int(next_res.x_next_row_number) > next_row:
+            next_row = int(next_res.x_next_row_number)
+        else:
+            # No more results.
+            break
+
     click.echo(f"Got data for {len(time_entries)} time entries.")
     write_to_csv(projects, time_entries, out)
     click.echo(f"Wrote data to {out}.")

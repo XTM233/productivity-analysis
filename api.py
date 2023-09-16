@@ -14,12 +14,14 @@
 import requests
 import dataclasses as dc
 from base64 import b64encode
-from typing import Dict, List
+from typing import Dict, List, Optional
 from datetime import date, datetime
 
 
 @dc.dataclass
 class Project:
+    """Represents a Toggl project."""
+
     id: str
     name: str
     workspace_id: str
@@ -29,6 +31,8 @@ class Project:
 
 @dc.dataclass
 class TimeEntry:
+    """Represents a Toggl time entry."""
+
     id: str
     workspace_id: str
     project_id: str
@@ -38,17 +42,33 @@ class TimeEntry:
     description: str
 
 
+@dc.dataclass
+class DetailedReportsResult:
+    """Represents the results of calling the `DetailedReports` API."""
+
+    x_next_id: Optional[str]
+    x_next_row_number: Optional[str]
+    x_next_timestamp: Optional[str]
+    x_page_size: str
+    x_range_start: str
+    x_range_end: str
+    x_service_level: str
+    time_entries: List[TimeEntry]
+
+
 class TogglApi:
-    """Simple wrapper to the Toggle API."""
+    """
+    A simple wrapper to a few methods from the Toggle API, v9.
+    See https://developers.track.toggl.com/docs/
+    """
 
     def __init__(self, email: str, password: str):
         self.email = email
         self.password = password
 
-    # TODO: rename `me`
-    def get_my_data(self) -> Dict:
+    def me(self) -> Dict:
         """
-        Retrieve data about 'me'
+        Retrieves data about 'me'
         See: https://developers.track.toggl.com/docs/api/me
         """
         res = requests.get(
@@ -59,12 +79,16 @@ class TogglApi:
             },
         )
         if res.status_code != 200:
-            raise ValueError(f"Request failed: {res}.")
+            raise ValueError(
+                f"Request failed with status {res.status_code}: {res.text}."
+            )
         return res.json()
 
-    def get_time_entries(self, start_date: date, end_date: date) -> List[TimeEntry]:
+    def time_entries(self, start_date: date, end_date: date) -> List[TimeEntry]:
         """
-        Retrieve time entries from start_date until end_date, inclusive.
+        Retrieves time entries from start_date inclusive until end_date exclusive.
+        Note that Toggl only allows retrieving time entries from the past three months
+        via this endpoint. For more, use the `detailed_reports()` method.
         See: https://developers.track.toggl.com/docs/api/time_entries/index.html
         """
         res = requests.get(
@@ -79,7 +103,9 @@ class TogglApi:
             },
         )
         if res.status_code != 200:
-            raise ValueError(f"Request failed: {res}.")
+            raise ValueError(
+                f"Request failed with status {res.status_code}: {res.text}."
+            )
         return [
             TimeEntry(
                 raw["id"],
@@ -93,9 +119,9 @@ class TogglApi:
             for raw in res.json()
         ]
 
-    def get_project_data(self, workspace_id: str) -> List[Project]:
+    def project_data(self, workspace_id: str) -> List[Project]:
         """
-        Retrieve data from the Projects API.
+        Retrieves data from the Projects API.
         See https://developers.track.toggl.com/docs/api/projects/index.html#get-workspaceprojects
         """
         res = requests.get(
@@ -106,7 +132,9 @@ class TogglApi:
             },
         )
         if res.status_code != 200:
-            raise ValueError(f"Request failed: {res}.")
+            raise ValueError(
+                f"Request failed with status {res.status_code}: {res.text}."
+            )
         return [
             Project(
                 raw["id"],
@@ -117,6 +145,52 @@ class TogglApi:
             )
             for raw in res.json()
         ]
+
+    def detailed_reports(
+        self, workspace_id: str, start_date: date, end_date: date, next_row: int = 0
+    ) -> DetailedReportsResult:
+        """
+        Retrieves data from the Detailed Reports API from start_date inclusive until
+        end_date exclusive. See https://developers.track.toggl.com/docs/reports/detailed_reports
+        """
+        res = requests.post(
+            f"https://api.track.toggl.com/reports/api/v3/workspace/{workspace_id}/search/time_entries",
+            json={
+                "start_date": start_date.isoformat(),
+                "end_date": end_date.isoformat(),
+            },
+            headers={
+                "content-type": "application/json",
+                "X-Next-Row-Number": str(next_row),
+                "Authorization": self._make_auth_string(),
+            },
+        )
+        if res.status_code != 200:
+            raise ValueError(
+                f"Request failed with status {res.status_code}: {res.text}."
+            )
+        time_entries = [
+            TimeEntry(
+                str(raw["time_entries"][0]["id"]),
+                workspace_id,
+                raw["project_id"],
+                datetime.fromisoformat(raw["time_entries"][0]["start"]),
+                datetime.fromisoformat(raw["time_entries"][0]["stop"]),
+                int(raw["time_entries"][0]["seconds"]),
+                raw["description"],
+            )
+            for raw in res.json()
+        ]
+        return DetailedReportsResult(
+            res.headers.get("X-Next-Id", None),
+            res.headers.get("X-Next-Row-Number", None),
+            res.headers.get("X-Next-Timestamp", None),
+            res.headers["X-Page-Size"],
+            res.headers["X-Range-Start"],
+            res.headers["X-Range-End"],
+            res.headers["X-Service-Level"],
+            time_entries,
+        )
 
     def _make_auth_string(self) -> str:
         """
